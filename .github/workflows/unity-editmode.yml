@@ -1,0 +1,66 @@
+name: Unity Restore Lab
+
+on:
+  push:
+    paths:
+      - "UnityProject/**"
+      - ".github/workflows/unity-editmode.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      license_present: ${{ steps.license.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate project structure
+        run: |
+          test -f UnityProject/ProjectSettings/ProjectVersion.txt
+          test -f UnityProject/Packages/manifest.json
+          test -f UnityProject/Assets/Tests/Editor/RestoreProbeTests.cs
+          python -m json.tool UnityProject/Packages/manifest.json > /dev/null
+          python -m json.tool UnityProject/Assets/Tests/Editor/RestoreLab.Tests.Editor.asmdef > /dev/null
+      - name: Check Unity activation availability without printing secrets
+        id: license
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ] || [ -n "$UNITY_SERIAL" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Unity license has not been configured; Unity Editor test will be skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  unity-editmode:
+    needs: preflight
+    if: needs.preflight.outputs.license_present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Unity EditMode verification
+        id: unity
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          projectPath: UnityProject
+          testMode: editmode
+          unityVersion: auto
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unity-editmode-results
+          path: ${{ steps.unity.outputs.artifactsPath }}
+          if-no-files-found: warn
