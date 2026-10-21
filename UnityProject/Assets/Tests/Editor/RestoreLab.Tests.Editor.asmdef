@@ -2,6 +2,9 @@
   "name": "RestoreLab.Tests.Editor",
   "rootNamespace": "",
   "references": [],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
   "includePlatforms": [
     "Editor"
   ],
